@@ -1,0 +1,65 @@
+const API_KEY = 'insert API key here';
+
+function bepaalZoekintentie() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var resultColumn = 8; // Kolom H (de 8e kolom) voor zoekintenties
+  var lastRow = sheet.getLastRow();
+
+  if (lastRow < 2) {
+    // Geen data om te verwerken
+    return;
+  }
+
+  // Haal de zoekwoorden en bestaande intenties op uit kolommen A en H
+  var dataRange = sheet.getRange(2, 1, lastRow - 1, resultColumn).getValues();
+
+  for (var i = 0; i < dataRange.length; i++) {
+    var zoekwoord = dataRange[i][0]; // Kolom A
+    var intentie = dataRange[i][resultColumn - 1]; // Kolom H (index 7 omdat arrays bij 0 beginnen)
+
+    // Controleer of de zoekintentie nog niet is bepaald
+    if (zoekwoord && !intentie) {
+      var nieuweIntentie = getSearchIntent(zoekwoord);
+      sheet.getRange(i + 2, resultColumn).setValue(nieuweIntentie);
+      SpreadsheetApp.flush(); // Forceer het toepassen van de wijziging
+      Utilities.sleep(3000); // Wacht 3 seconden tussen API-aanroepen
+    }
+  }
+}
+
+function getSearchIntent(zoekwoord) {
+  var prompt = `Je bent SEO-specialist die van een zoekwoord de zoekintentie moet bepalen. Bestudeer het zoekwoord, analyseer welk zoekgedrag er achter kan zitten en bepaal of de zoekintentie informationeel, transactioneel, commercieel of navigerend is. Geef als antwoord alleen: informationeel, transactioneel, commercieel of navigerend. Schrijf het door jou gekozen woord altijd alleen in kleine letters. Zoekwoord: ${zoekwoord}. Twijfel je over de zoekintentie? Kies in dat geval twee zoekintenties waar tussen je twijfelt en geef ze allebei terug, met tussen de twee woorden een forward slash. Doe dit alleen bij grote twijfel, niet bij lichte twijfel.`;
+
+  var requestData = {
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": prompt}],
+    "temperature": 0.7,
+    "max_tokens": 1000
+  };
+
+  var options = {
+    "method": "post",
+    "contentType": "application/json",
+    "headers": {
+      "Authorization": `Bearer ${API_KEY}`
+    },
+    "payload": JSON.stringify(requestData),
+    "muteHttpExceptions": true
+  };
+
+  try {
+    var response = UrlFetchApp.fetch("https://api.openai.com/v1/chat/completions", options);
+
+    if (response.getResponseCode() !== 200) {
+      Logger.log("Error: " + response.getContentText());
+      return "Error";
+    }
+
+    var json = JSON.parse(response.getContentText());
+    var result = json.choices[0].message.content.trim();
+    return result;
+  } catch (e) {
+    Logger.log(e);
+    return "Error";
+  }
+}
